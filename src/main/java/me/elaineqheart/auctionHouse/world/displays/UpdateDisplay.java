@@ -131,7 +131,7 @@ public class UpdateDisplay implements Runnable {
         data.itemEntity.setItemStack(itemStack);
         // if the item entity is too far away, teleport it to the correct location
         if (data.itemEntity.getLocation().distance(data.location.clone().add(0.5, 1, 0.5)) > 0.1) {
-            data.itemEntity.teleport(data.location.clone().add(0.5, 1, 0.5));
+            data.itemEntity.teleportAsync(data.location.clone().add(0.5, 1, 0.5));
         }
         return reload;
     }

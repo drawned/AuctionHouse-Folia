@@ -58,16 +58,19 @@ public class Blacklist extends Config {
         if(meta == null) return false;
         return meta.getDisplayName().contains(key) || meta.getItemName().contains(key);
     }
+
     private static boolean itemModelContains(ItemStack item, String key) {
-        ItemMeta meta = item.getItemMeta();
-        if(meta == null || !meta.hasItemModel() || meta.getItemModel() == null) return false;
-        //if(meta.hasCustomModelData()) blacklisted |= String.valueOf(meta.getCustomModelData()).contains(key); //deprecated
-        return meta.getItemModel().getKey().contains(key);
+        // Como esta versão do Paper não suporta o componente 'item_model' (adicionado no 1.21.2),
+        // retornamos false para evitar erros de compilação.
+        return false;
     }
+
     private static boolean customModelContains(ItemStack item, String key) {
         ItemMeta meta = item.getItemMeta();
-        if(meta == null) return false;
-        return meta.getCustomModelDataComponent().getStrings().stream().anyMatch(s -> s.equals(key));
+        if (meta == null || !meta.hasCustomModelData()) return false;
+
+        // Nesta versão, o Custom Model Data é um número inteiro simples
+        return String.valueOf(meta.getCustomModelData()).equals(key);
     }
 
     public void addExact(ItemStack item) {

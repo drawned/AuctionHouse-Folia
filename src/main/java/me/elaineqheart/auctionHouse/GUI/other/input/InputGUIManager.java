@@ -5,7 +5,7 @@ import me.elaineqheart.auctionHouse.data.persistentStorage.local.configs.M;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
-import org.bukkit.inventory.MenuType;
+import org.bukkit.event.inventory.InventoryType;
 
 public class InputGUIManager implements Listener {
 
@@ -22,7 +22,7 @@ public class InputGUIManager implements Listener {
     public void open(Player player, String inventoryTitleKey, InputHandler handler) {
         String inventoryTitle = M.getFormatted(inventoryTitleKey);
         try {
-            MenuType.class.getName();
+            InventoryType.class.getName();
 
             anvilManager.open(player, inventoryTitle, handler);
         } catch (NoClassDefFoundError e) {

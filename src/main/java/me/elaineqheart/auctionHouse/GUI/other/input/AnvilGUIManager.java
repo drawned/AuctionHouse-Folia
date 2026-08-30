@@ -9,10 +9,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.MenuType;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.view.AnvilView;
 
@@ -27,7 +27,7 @@ public class AnvilGUIManager implements Listener {
 
     @SuppressWarnings("UnstableApiUsage")
     public void open(Player player, String inventoryTitle, InputHandler handler) {
-        AnvilView view = MenuType.ANVIL.create(player, inventoryTitle);
+        AnvilView view = (AnvilView) Bukkit.createInventory(player, InventoryType.ANVIL, inventoryTitle);
         view.setMaximumRepairCost(0);
         view.setItem(0, ItemManager.emptyPaper);
         registerHandledInventory(view.getTopInventory(), handler);

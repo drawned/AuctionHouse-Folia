@@ -366,13 +366,14 @@ public class AuctionHouseCommand implements CommandExecutor, TabCompleter {
                         } else if (strings[2].equals(M.getFormatted("commands.material"))){
                             ConfigManager.blacklist.addMaterial(item.getType().toString());
                         } else if (strings[2].equals(M.getFormatted("commands.item_model"))) {
-                            if(item.getItemMeta().getItemModel() == null) {
+                            meta = item.getItemMeta();
+                            if (meta == null || !meta.hasCustomModelData()) {
                                 p.sendMessage(M.getFormatted("command-feedback.blacklist-no-model"));
                                 return true;
                             }
-                            else ConfigManager.blacklist.addItemModel(item.getItemMeta().getItemModel().getKey());
-                            p.sendMessage(M.getFormatted("command-feedback.blacklist-name-success", "%name%",
-                                    item.getItemMeta().getItemModel().getKey()));
+                            String modelDataStr = String.valueOf(meta.getCustomModelData());
+                            ConfigManager.blacklist.addItemModel(modelDataStr);
+                            p.sendMessage(M.getFormatted("command-feedback.blacklist-name-success", "%name%", modelDataStr));
                             return true;
                         }
                         p.sendMessage(M.getFormatted("command-feedback.blacklist-success", "%item%", item.getType().name()));

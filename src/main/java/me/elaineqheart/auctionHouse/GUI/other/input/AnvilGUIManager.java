@@ -12,7 +12,6 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.MenuType;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.view.AnvilView;
 
@@ -27,15 +26,17 @@ public class AnvilGUIManager implements Listener {
 
     @SuppressWarnings("UnstableApiUsage")
     public void open(Player player, String inventoryTitle, InputHandler handler) {
-        AnvilView view = MenuType.ANVIL.create(player, inventoryTitle);
+        AnvilView view = (AnvilView) player.openAnvil(null, true);
+        if (view == null) return;
+
+        view.setTitle(inventoryTitle);
         view.setMaximumRepairCost(0);
         view.setItem(0, ItemManager.emptyPaper);
         registerHandledInventory(view.getTopInventory(), handler);
-        player.openInventory(view);
     }
 
     public void registerHandledInventory(Inventory inventory, InputHandler handler) {
-        activeInventories.put(inventory,handler);
+        activeInventories.put(inventory, handler);
     }
 
     @SuppressWarnings("UnstableApiUsage")
@@ -53,7 +54,7 @@ public class AnvilGUIManager implements Listener {
         }
         if (event.getSlot() == 1) {
             AnvilView view = (AnvilView) event.getView();
-            view.setItem(0, ItemManager.emptyPaper); // this removes the enchantment cost for some reason
+            view.setItem(0, ItemManager.emptyPaper); // removes the enchantment cost
         }
         if (event.getSlot() != 2) return;
         ItemStack resultItem = event.getCurrentItem();
@@ -61,7 +62,6 @@ public class AnvilGUIManager implements Listener {
         ItemMeta meta = resultItem.getItemMeta();
         if (meta != null && meta.hasDisplayName()) {
             Sounds.click(event);
-            //remove the paper, else it will end up in the players inventory
             String typedText = meta.getDisplayName();
             openGUI(event, typedText, handler, paperItem);
         }
@@ -76,7 +76,7 @@ public class AnvilGUIManager implements Listener {
     }
 
     @SuppressWarnings("UnstableApiUsage")
-    @EventHandler //also set the name formatted
+    @EventHandler
     public void handleTyping(PrepareAnvilEvent event) {
         InputHandler handler = activeInventories.get(event.getView().getTopInventory());
         if (handler == null) return;
@@ -84,7 +84,7 @@ public class AnvilGUIManager implements Listener {
         ItemStack result = event.getInventory().getItem(2);
         if (result == null) return;
 
-        instance.getScheduler().globalRegionalScheduler().runDelayed(() -> event.getView().setRepairCost(0),1);
+        instance.getScheduler().globalRegionalScheduler().runDelayed(() -> event.getView().setRepairCost(0), 1);
     }
 
     @EventHandler
@@ -93,7 +93,6 @@ public class AnvilGUIManager implements Listener {
         if (handler == null) return;
         ItemStack paperItem = event.getInventory().getItem(0);
         Player p = (Player) event.getPlayer();
-        //remove the paper, else it will end up in the players inventory
         assert paperItem != null;
         p.getOpenInventory().getTopInventory().remove(paperItem);
         p.getOpenInventory().getBottomInventory().remove(paperItem);
@@ -103,7 +102,7 @@ public class AnvilGUIManager implements Listener {
     public void forceCloseAll() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Inventory inv = player.getOpenInventory().getTopInventory();
-            if(activeInventories.containsKey(inv)) {
+            if (activeInventories.containsKey(inv)) {
                 ItemStack paperItem = inv.getItem(0);
                 assert paperItem != null;
                 player.getOpenInventory().getTopInventory().remove(paperItem);
@@ -112,5 +111,4 @@ public class AnvilGUIManager implements Listener {
             }
         }
     }
-
 }

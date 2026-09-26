@@ -1,63 +1,65 @@
 plugins {
-    id("java")
-    id("com.gradleup.shadow") version "9.5.1"
-    id("xyz.jpenilla.run-paper") version "3.0.2"
+    id 'java'
+    id 'com.gradleup.shadow' version '9.5.1'
+    id 'xyz.jpenilla.run-paper' version '3.0.2'
 }
 
-group = "me.elaineqheart"
-version = "1.5.3"
+group = 'me.elaineqheart'
+version = '1.5.3'
 
 repositories {
     mavenCentral()
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
     maven {
-        name = "spigotmc-repo"
-        url = "https://hub.spigotmc.org/nexus/content/repositories/snapshots/"
+        name = 'sonatype'
+        url = 'https://oss.sonatype.org/content/groups/public/'
     }
-    maven {
-        name = "sonatype"
-        url = "https://oss.sonatype.org/content/groups/public/"
-    }
-    maven { url = "https://jitpack.io" }
-    maven { url = "https://repo.extendedclip.com/content/repositories/placeholderapi/" }
-    maven { url = "https://mvn-repo.arim.space/lesser-gpl3/" }
+    maven { url = 'https://jitpack.io' }
+    maven { url = 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+    maven { url = 'https://mvn-repo.arim.space/lesser-gpl3/' }
 }
 
-//alt + ins
 dependencies {
-    compileOnly("org.spigotmc:spigot-api:1.21.4-R0.1-SNAPSHOT")
-    compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
-        exclude group: "org.bukkit", module: "bukkit"
+    // Bloco de exclusão corrigido
+    compileOnly('com.github.MilkBowl:VaultAPI:1.7') {
+        exclude group: 'org.bukkit', module: 'bukkit'
+        exclude group: 'org.bukkit'
+        exclude group: 'org.spigotmc'
+        exclude group: 'io.papermc.paper'
+        exclude group: 'com.destroystokyo.paper'
     }
-    compileOnly("com.github.Unp1xelt:Locale-API:1.0")
-    compileOnly("me.clip:placeholderapi:2.11.6")
-    implementation("net.kyori:adventure-text-minimessage:4.25.0")
-    implementation("net.kyori:adventure-text-serializer-legacy:4.25.0")
-    implementation("space.arim.morepaperlib:morepaperlib:0.5.2")
+
+    // Versão oficial do Paper 1.21 adicionada corretamente
+    compileOnly 'io.papermc.paper:paper-api:1.21-R0.1-SNAPSHOT'
+
+    compileOnly 'com.github.Unp1xelt:Locale-API:1.0'
+    compileOnly 'me.clip:placeholderapi:2.12.3'
+
+    implementation 'net.kyori:adventure-text-minimessage:4.25.0'
+    implementation 'net.kyori:adventure-text-serializer-legacy:4.25.0'
+    implementation 'space.arim.morepaperlib:morepaperlib:0.5.2'
 }
 
-tasks.named("jar") {
+tasks.named('jar') {
     enabled = false
 }
 
-tasks.named("shadowJar") {
-    archiveBaseName.set(rootProject.name ?: "AuctionHouse")
-    archiveClassifier.set("")
+tasks.named('shadowJar') {
+    archiveBaseName.set(rootProject.name ?: 'AuctionHouse')
+    archiveClassifier.set('')
     archiveVersion.set(version)
-    relocate("net.kyori.adventure", "me.elaineqheart.auctionHouse.libs.adventure")
-    relocate("space.arim.morepaperlib", "me.elaineqheart.auctionHouse.libs.morepaperlib")
-    destinationDirectory.set(file("/media/elaine/Boot/Elaine/programmieren/java/minecraft/MC_test_servers/1.21.5_paper/plugins"))
-    //destinationDirectory.set(file("/media/elaine/Boot/Elaine/programmieren/java/minecraft/MC_test_servers/26.2_spigot/plugins"))
-    //destinationDirectory.set(file("/media/elaine/Boot/Elaine/programmieren/java/minecraft/MC_test_servers/1.21.11_purpur/plugins"))
+    relocate('net.kyori.adventure', 'me.elaineqheart.auctionHouse.libs.adventure')
+    relocate('space.arim.morepaperlib', 'me.elaineqheart.auctionHouse.libs.morepaperlib')
+
+    // Diretório de destino
+    destinationDirectory.set(file('/media/elaine/Boot/Elaine/programmieren/java/minecraft/MC_test_servers/1.21.5_paper/plugins'))
+
     mergeServiceFiles()
 }
 
-tasks {
-    runServer {
-        // Configure the Minecraft version for our task.
-        // This is the only required configuration besides applying the plugin.
-        // Your plugin's jar (or shadowJar if present) will be used automatically.
-        minecraftVersion("1.21")
-    }
+// Configuração do servidor de testes corrigida
+runServer {
+    minecraftVersion('1.21')
 }
 
 def targetJavaVersion = 21

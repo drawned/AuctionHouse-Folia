@@ -14,10 +14,15 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class CollectExpiredItemGUI extends InventoryGUI {
 
     private final ItemNote note;
     private final AhConfiguration c;
+    private final AtomicBoolean isProcessing = new AtomicBoolean(false);
+
     public CollectExpiredItemGUI(ItemNote note, AhConfiguration configuration) {
         super();
         this.note = note;
@@ -27,7 +32,7 @@ public class CollectExpiredItemGUI extends InventoryGUI {
 
     @Override
     protected Inventory createInventory() {
-        return Bukkit.createInventory(null,6*9, M.getFormatted("inventory-titles.collect-expired"));
+        return Bukkit.createInventory(null, 6 * 9, M.getFormatted("inventory-titles.collect-expired"));
     }
 
     @Override
@@ -39,33 +44,35 @@ public class CollectExpiredItemGUI extends InventoryGUI {
                 "# # # # . # # # #",
                 "# # # # # # # # #",
                 "# # # # . # # # #"
-        },fillerItem());
+        }, fillerItem());
         this.addButton(13, Item());
         this.addButton(31, collectItem());
         this.addButton(49, back());
         super.decorate(player);
     }
 
-    private void fillOutPlaces(String[] places, InventoryButton fillerItem){
-        for(int i = 0; i < places.length; i++){
-            for(int j = 0; j < places[i].length(); j+=2){
-                if(places[i].charAt(j)=='#') {
-                    this.addButton(i*9+j/2, fillerItem);
+    private void fillOutPlaces(String[] places, InventoryButton fillerItem) {
+        for (int i = 0; i < places.length; i++) {
+            for (int j = 0; j < places[i].length(); j += 2) {
+                if (places[i].charAt(j) == '#') {
+                    this.addButton(i * 9 + j / 2, fillerItem);
                 }
             }
         }
     }
 
-    private InventoryButton fillerItem(){
+    private InventoryButton fillerItem() {
         return new InventoryButton()
                 .creator(player -> ItemManager.fillerItem)
                 .consumer(event -> {});
     }
+
     private InventoryButton Item() {
         return new InventoryButton()
                 .creator(player -> ItemManager.createItemFromNote(note, player, true))
                 .consumer(Sounds::click);
     }
+
     private InventoryButton back() {
         return new InventoryButton()
                 .creator(player -> ItemManager.backToMyAuctions)
@@ -75,14 +82,28 @@ public class CollectExpiredItemGUI extends InventoryGUI {
                     AuctionHouse.getGuiManager().openGUI(new MyAuctionsGUI(c), p);
                 });
     }
+
     private InventoryButton collectItem() {
         return new InventoryButton()
                 .creator(player -> ItemManager.collectExpiredItem)
                 .consumer(event -> {
                     Player p = (Player) event.getWhoClicked();
-                    //check if inventory is full
-                    if(p.getInventory().firstEmpty() == -1){
+
+                    // Previne execução concorrente / packet spam
+                    if (!isProcessing.compareAndSet(false, true)) {
+                        return;
+                    }
+
+                    // Verifica se o inventário está cheio
+                    if (p.getInventory().firstEmpty() == -1) {
                         p.sendMessage(M.getFormatted("chat.inventory-full"));
+                        Sounds.villagerDeny(event);
+                        isProcessing.set(false);
+                        return;
+                    }
+
+                    if (!note.markCollected()) {
+                        p.sendMessage(M.getFormatted("chat.non-existent"));
                         Sounds.villagerDeny(event);
                         return;
                     }
@@ -90,35 +111,46 @@ public class CollectExpiredItemGUI extends InventoryGUI {
                     ItemStack withdrawItem = note.getItem();
 
                     boolean collected;
-                    if(note.getAdminMessage() != null && !note.getAdminMessage().isEmpty()) { // expired by a moderator
+                    if (note.getAdminMessage() != null && !note.getAdminMessage().isEmpty()) { // expirado por moderador
                         if (note.getItem().equals(ItemManager.createDirt())) {
                             collected = ItemNoteStorage.collectAdminDeletedAuctionItem(note);
                         } else {
                             collected = ItemNoteStorage.collectAdminExpiredAuctionItem(note);
                         }
                     } else {
-                        collected = ItemNoteStorage.collectExpiredAuctionItem(note); // delete it first!!
+                        collected = ItemNoteStorage.collectExpiredAuctionItem(note);
                     }
+
                     if (!collected) {
                         p.sendMessage(M.getFormatted("chat.non-existent"));
                         Sounds.villagerDeny(event);
                         return;
                     }
 
-                    if(note.getAdminMessage() != null && !note.getAdminMessage().isEmpty()) { // expired by a moderator
-                        if(note.getItem().equals(ItemManager.createDirt())) {
+                    if (note.getAdminMessage() != null && !note.getAdminMessage().isEmpty()) {
+                        if (note.getItem().equals(ItemManager.createDirt())) {
                             p.sendMessage(M.getFormatted("chat.deleted-auction-by-admin", "%reason%", note.getAdminMessage()));
                             p.closeInventory();
                             Sounds.breakWood(event);
-                        }else {
+                        } else {
                             p.sendMessage(M.getFormatted("chat.expired-auction-by-admin", "%reason%", note.getAdminMessage()));
                             p.closeInventory();
-                            p.getInventory().addItem(withdrawItem);
+                            Map<Integer, ItemStack> leftover = p.getInventory().addItem(withdrawItem);
+                            if (!leftover.isEmpty()) {
+                                for (ItemStack item : leftover.values()) {
+                                    p.getWorld().dropItemNaturally(p.getLocation(), item);
+                                }
+                            }
                             Sounds.experience(event);
                         }
                     } else {
                         AuctionHouse.getGuiManager().openGUI(new MyAuctionsGUI(c), p);
-                        p.getInventory().addItem(withdrawItem);
+                        Map<Integer, ItemStack> leftover = p.getInventory().addItem(withdrawItem);
+                        if (!leftover.isEmpty()) {
+                            for (ItemStack item : leftover.values()) {
+                                p.getWorld().dropItemNaturally(p.getLocation(), item);
+                            }
+                        }
                         Sounds.experience(event);
                     }
 
@@ -126,4 +158,3 @@ public class CollectExpiredItemGUI extends InventoryGUI {
     }
 
 }
-

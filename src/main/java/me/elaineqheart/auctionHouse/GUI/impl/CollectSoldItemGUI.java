@@ -20,6 +20,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class CollectSoldItemGUI extends InventoryGUI {
 
@@ -28,6 +29,7 @@ public class CollectSoldItemGUI extends InventoryGUI {
     private final AhConfiguration c;
     private final double price;
     private final AhConfiguration.View goBackTo;
+    private final AtomicBoolean isProcessing = new AtomicBoolean(false);
 
     public CollectSoldItemGUI(ItemNote note, AhConfiguration configuration, AhConfiguration.View goBackTo) {
         super();
@@ -41,7 +43,7 @@ public class CollectSoldItemGUI extends InventoryGUI {
 
     @Override
     protected Inventory createInventory() {
-        return Bukkit.createInventory(null,6*9, M.getFormatted("inventory-titles.collect-sold"));
+        return Bukkit.createInventory(null, 6 * 9, M.getFormatted("inventory-titles.collect-sold"));
     }
 
     @Override
@@ -53,33 +55,35 @@ public class CollectSoldItemGUI extends InventoryGUI {
                 "# # # # . # # # #",
                 "# # # # # # # # #",
                 "# # # # . # # # #"
-        },fillerItem());
+        }, fillerItem());
         this.addButton(13, buyingItem());
         this.addButton(31, collectItem());
         this.addButton(49, back());
         super.decorate(player);
     }
 
-    private void fillOutPlaces(String[] places, InventoryButton fillerItem){
-        for(int i = 0; i < places.length; i++){
-            for(int j = 0; j < places[i].length(); j+=2){
-                if(places[i].charAt(j)=='#') {
-                    this.addButton(i*9+j/2, fillerItem);
+    private void fillOutPlaces(String[] places, InventoryButton fillerItem) {
+        for (int i = 0; i < places.length; i++) {
+            for (int j = 0; j < places[i].length(); j += 2) {
+                if (places[i].charAt(j) == '#') {
+                    this.addButton(i * 9 + j / 2, fillerItem);
                 }
             }
         }
     }
 
-    private InventoryButton fillerItem(){
+    private InventoryButton fillerItem() {
         return new InventoryButton()
                 .creator(player -> ItemManager.fillerItem)
                 .consumer(event -> {});
     }
+
     private InventoryButton buyingItem() {
         return new InventoryButton()
                 .creator(player -> item)
                 .consumer(Sounds::click);
     }
+
     private InventoryButton back() {
         return new InventoryButton()
                 .creator(player -> ItemManager.backToMyAuctions)
@@ -89,11 +93,18 @@ public class CollectSoldItemGUI extends InventoryGUI {
                     AuctionHouse.getGuiManager().openGUI(p, c, goBackTo);
                 });
     }
+
     private InventoryButton collectItem() {
         return new InventoryButton()
                 .creator(player -> ItemManager.collectSoldItem(getProfit(price)))
                 .consumer(event -> {
                     Player p = (Player) event.getWhoClicked();
+
+                    // Previne múltiplos cliques / disparos simultâneos por packet delay
+                    if (!isProcessing.compareAndSet(false, true)) {
+                        return;
+                    }
+
                     String message = M.getFormatted("chat.collect-sold-auction", getProfit(price),
                             "%amount%", String.valueOf(item.getAmount()),
                             "%item%", note.getItemName());
@@ -110,14 +121,32 @@ public class CollectSoldItemGUI extends InventoryGUI {
 
     public static boolean collect(OfflinePlayer p, UUID noteID, int itemAmount, double price) {
         ItemNote note = AuctionHouseStorage.getNote(noteID);
-        boolean success = ItemNoteStorage.collectSoldAuctionItem(note, itemAmount, price);
-        if (!success) {
+        if (note == null) {
             if (p instanceof Player onlinePlayer) onlinePlayer.sendMessage(M.getFormatted("chat.non-existent"));
             return false;
         }
-        Economy eco = VaultHook.getEconomy();
-        eco.depositPlayer(p, getProfit(price));
-        return true;
+
+        // Sincronização atômica na instância da nota para evitar depósitos duplicados
+        synchronized (note) {
+            if (note.getPartiallySoldAmountLeft() == 0 && note.isCollected()) {
+                if (p instanceof Player onlinePlayer) onlinePlayer.sendMessage(M.getFormatted("chat.non-existent"));
+                return false;
+            }
+
+            boolean success = ItemNoteStorage.collectSoldAuctionItem(note, itemAmount, price);
+            if (!success) {
+                if (p instanceof Player onlinePlayer) onlinePlayer.sendMessage(M.getFormatted("chat.non-existent"));
+                return false;
+            }
+
+            if (note.getPartiallySoldAmountLeft() == 0) {
+                note.markCollected();
+            }
+
+            Economy eco = VaultHook.getEconomy();
+            eco.depositPlayer(p, getProfit(price));
+            return true;
+        }
     }
 
     private static double getProfit(double price) {

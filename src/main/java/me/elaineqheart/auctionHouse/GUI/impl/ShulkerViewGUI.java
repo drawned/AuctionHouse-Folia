@@ -32,7 +32,7 @@ public class ShulkerViewGUI extends InventoryGUI {
         instance.getScheduler().globalRegionalScheduler().runDelayed(() -> {
             Sounds.closeShulker(event);
             openSwitch(c, note, p, goBackTo);
-        },0);
+        },1);
     }
 
     public static void openSwitch(AhConfiguration c, ItemNote note, Player p, AhConfiguration.View goBackTo) {

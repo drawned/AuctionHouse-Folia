@@ -20,6 +20,7 @@ import org.bukkit.potion.PotionType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 public class ItemNote {
@@ -40,6 +41,8 @@ public class ItemNote {
     private final boolean isBIDAuction;
     private List<Bid> bidHistory = new ArrayList<>();
     private Set<UUID> claimedPlayers = new HashSet<>();
+    private transient AtomicBoolean isCancelled = new AtomicBoolean(false);
+    private transient AtomicBoolean isCollected = new AtomicBoolean(false);
 
     public ItemNote(Player player, ItemStack item, double price, boolean isBIDAuction) {
         this.noteID = UUID.randomUUID();
@@ -63,17 +66,18 @@ public class ItemNote {
         ItemNoteStorage.addItem(noteID, myItem);
         return myItem.clone();
     }
+
     public long getTimeLeft(){
-        // +30 seconds [auctionSetupTime] wait time until the item is up on auction
-        if(auctionTime == 0) auctionTime = ConfigManager.permissions.getAuctionDuration(Bukkit.getPlayer(playerUUID), isBIDAuction); //backwards compatibility
-        return auctionTime + SettingManager.auctionSetupTime - (new Date().getTime() - dateCreated.getTime())/1000; // divided by 1000 to get seconds
+        if(auctionTime == 0) auctionTime = ConfigManager.permissions.getAuctionDuration(Bukkit.getPlayer(playerUUID), isBIDAuction);
+        return auctionTime + SettingManager.auctionSetupTime - (new Date().getTime() - dateCreated.getTime())/1000;
     }
+
     public boolean isExpired(){
         return getTimeLeft()<0;
     }
 
     public boolean isOnWaitingList() {
-        if(auctionTime == 0) auctionTime = ConfigManager.permissions.getAuctionDuration(Bukkit.getPlayer(playerUUID), isBIDAuction); //backwards compatibility
+        if(auctionTime == 0) auctionTime = ConfigManager.permissions.getAuctionDuration(Bukkit.getPlayer(playerUUID), isBIDAuction);
         return getTimeLeft() > auctionTime;
     }
 
@@ -81,9 +85,11 @@ public class ItemNote {
         if(getPartiallySoldAmountLeft() == 0) return price;
         return price / getItem().getAmount() * getPartiallySoldAmountLeft();
     }
+
     public double getSoldPrice() {
         return partiallySoldAmountLeft == 0 ? price : price - getCurrentPrice();
     }
+
     public int getCurrentAmount() {
         return partiallySoldAmountLeft == 0 ? getItem().getAmount() : partiallySoldAmountLeft;
     }
@@ -126,27 +132,26 @@ public class ItemNote {
             case POTION -> sort = Translate.PotionSort.POTION;
             case LINGERING_POTION -> sort = Translate.PotionSort.LINGERING_POTION;
             case SPLASH_POTION -> sort = Translate.PotionSort.SPLASH_POTION;
-            default -> throw new IllegalStateException("Unexpected potion " +
-                    "value: " + translateItem.getType());
+            default -> throw new IllegalStateException("Unexpected potion value: " + translateItem.getType());
         }
         return sort;
     }
 
-    //Getters and Setters
+    // Getters and Setters
     public String getPlayerName() {return playerName;}
     public String getBuyerName() {return isBIDAuction ? getLastBidderName() : buyerName;}
     public UUID getBuyerUUID() {return isBIDAuction ? getLastBidder() :
-            (buyerUUID != null ? buyerUUID : Bukkit.getOfflinePlayer(buyerName).getUniqueId());} //offline player backwards compatibility
+            (buyerUUID != null ? buyerUUID : Bukkit.getOfflinePlayer(buyerName).getUniqueId());}
     public UUID getPlayerUUID() {return playerUUID;}
     public Date getDateCreated() {return dateCreated;}
     public double getPrice() {return price;}
-    public boolean isSold() {return isSold;}
-    public boolean isTheoreticallyOnAuction() {return !isSold || partiallySoldAmountLeft != 0;} //NOT INCLUDING EXPIRED
+    public synchronized boolean isSold() {return isSold;}
+    public boolean isTheoreticallyOnAuction() {return (!isSold() && !isCancelled()) || partiallySoldAmountLeft != 0;}
     public int getPartiallySoldAmountLeft() {return partiallySoldAmountLeft;}
     public String getAdminMessage() {return adminMessage;}
     public UUID getNoteID() {return noteID;}
     public String getItemName() {
-        if (itemName == null) itemName = StringUtils.getItemName(getItem()); //backwards compatibility
+        if (itemName == null) itemName = StringUtils.getItemName(getItem());
         return itemName;
     }
     public List<Bid> getBidHistoryList() {
@@ -175,10 +180,32 @@ public class ItemNote {
     }
     public boolean canClaimBid(UUID playerID) {return !getClaimedPlayers().contains(playerID);}
 
+    public boolean isCancelled() {
+        if (isCancelled == null) isCancelled = new AtomicBoolean(false);
+        return isCancelled.get();
+    }
+
+    public synchronized boolean markCancelled() {
+        if (isCancelled == null) isCancelled = new AtomicBoolean(false);
+        if (isSold) return false;
+        return isCancelled.compareAndSet(false, true);
+    }
+
+    public boolean isCollected() {
+        if (isCollected == null) isCollected = new AtomicBoolean(false);
+        return isCollected.get();
+    }
+
+    public synchronized boolean markCollected() {
+        if (isCollected == null) isCollected = new AtomicBoolean(false);
+        return isCollected.compareAndSet(false, true);
+    }
+
     public void setBuyerName(String buyerName, UUID id) {
         this.buyerName = buyerName;
         this.buyerUUID = id;
     }
+
     public void addBid(Player player, double bid) {
         this.bidHistory.add(new Bid(player, new Date(), bid));
         this.price = bid;
@@ -187,8 +214,9 @@ public class ItemNote {
         }
         AuctionHouseStorage.addBid(player.getUniqueId(), noteID);
     }
+
     public void removeBid(Player player) {getClaimedPlayers().add(player.getUniqueId());}
-    public void setSold(boolean isSold) {this.isSold = isSold;}
+    public synchronized void setSold(boolean isSold) {this.isSold = isSold;}
     public void setAdminMessage(String adminMessage) {this.adminMessage = adminMessage;}
     public void setItem(ItemStack item) {
         this.itemData = ItemStackConverter.encode(item);

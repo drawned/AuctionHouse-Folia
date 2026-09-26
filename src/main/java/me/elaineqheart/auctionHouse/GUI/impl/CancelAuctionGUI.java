@@ -15,17 +15,20 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
-public class CancelAuctionGUI extends InventoryGUI implements Runnable{
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+public class CancelAuctionGUI extends InventoryGUI implements Runnable {
 
     private final ItemNote note;
     private final AhConfiguration c;
     private final AhConfiguration.View goBackTo;
     private static final AuctionHouse instance = AuctionHouse.getInstance();
-
+    private final AtomicBoolean isProcessing = new AtomicBoolean(false);
 
     @Override
     public void run() {
-        if (this.getInventory().getViewers().isEmpty()) return;
+        if (this.getInventory().getViewers().isEmpty() || isProcessing.get() || note.isCancelled()) return;
         this.addButton(13, Item());
         super.decorate(c.getPlayer());
         instance.getScheduler().globalRegionalScheduler().runDelayed(this, TaskManager.GUIUpdateTick);
@@ -42,7 +45,7 @@ public class CancelAuctionGUI extends InventoryGUI implements Runnable{
 
     @Override
     protected Inventory createInventory() {
-        return Bukkit.createInventory(null,6*9, M.getFormatted("inventory-titles.cancel-auction"));
+        return Bukkit.createInventory(null, 6 * 9, M.getFormatted("inventory-titles.cancel-auction"));
     }
 
     @Override
@@ -54,42 +57,44 @@ public class CancelAuctionGUI extends InventoryGUI implements Runnable{
                 "# # # # . # # # #",
                 "# # # # # # # # #",
                 "# # # # . # # # #"
-        },fillerItem());
+        }, fillerItem());
         this.addButton(13, Item());
         this.addButton(31, collectItem());
         this.addButton(49, back());
         super.decorate(player);
     }
 
-    private void fillOutPlaces(String[] places, InventoryButton fillerItem){
-        for(int i = 0; i < places.length; i++){
-            for(int j = 0; j < places[i].length(); j+=2){
-                if(places[i].charAt(j)=='#') {
-                    this.addButton(i*9+j/2, fillerItem);
+    private void fillOutPlaces(String[] places, InventoryButton fillerItem) {
+        for (int i = 0; i < places.length; i++) {
+            for (int j = 0; j < places[i].length(); j += 2) {
+                if (places[i].charAt(j) == '#') {
+                    this.addButton(i * 9 + j / 2, fillerItem);
                 }
             }
         }
     }
 
-    private InventoryButton fillerItem(){
+    private InventoryButton fillerItem() {
         return new InventoryButton()
                 .creator(player -> ItemManager.fillerItem)
                 .consumer(event -> {});
     }
+
     private InventoryButton Item() {
         ItemStack item = ItemManager.createItemFromNote(note, c.getPlayer(), false);
         return new InventoryButton()
                 .creator(player -> item)
                 .consumer(event -> {
-                    if(ItemManager.isShulkerBox(item) && event.isRightClick()) {
-                        AuctionHouse.getGuiManager().openGUI(new ShulkerViewGUI(note,c, goBackTo), c.getPlayer());
+                    if (ItemManager.isShulkerBox(item) && event.isRightClick()) {
+                        AuctionHouse.getGuiManager().openGUI(new ShulkerViewGUI(note, c, goBackTo), c.getPlayer());
                         return;
                     }
                     if (ItemManager.isBundle(item) && event.isRightClick()) {
-                        AuctionHouse.getGuiManager().openGUI(new BundleViewGUI(note,c, goBackTo), c.getPlayer());
+                        AuctionHouse.getGuiManager().openGUI(new BundleViewGUI(note, c, goBackTo), c.getPlayer());
                     }
                 });
     }
+
     private InventoryButton back() {
         return new InventoryButton()
                 .creator(player -> ItemManager.backToMyAuctions)
@@ -99,32 +104,55 @@ public class CancelAuctionGUI extends InventoryGUI implements Runnable{
                     AuctionHouse.getGuiManager().openGUI(p, c, goBackTo);
                 });
     }
+
     private InventoryButton collectItem() {
         return new InventoryButton()
                 .creator(player -> ItemManager.cancelBINAuction)
                 .consumer(event -> {
                     Player p = (Player) event.getWhoClicked();
-                    //check if inventory is full
-                    if(p.getInventory().firstEmpty() == -1){
-                        p.sendMessage(M.getFormatted("chat.inventory-full"));
-                        Sounds.villagerDeny(event);
+
+                    // Previne execução simultânea por atraso ou disparo de pacotes em lote
+                    if (!isProcessing.compareAndSet(false, true)) {
                         return;
                     }
-                    //ItemNote test = NoteStorage.getNote(note.getNoteID().toString());
+
+                    // Verifica se o inventário está cheio
+                    if (p.getInventory().firstEmpty() == -1) {
+                        p.sendMessage(M.getFormatted("chat.inventory-full"));
+                        Sounds.villagerDeny(event);
+                        isProcessing.set(false);
+                        return;
+                    }
+
                     if (note.isSold()) {
                         p.sendMessage(M.getFormatted("chat.already-sold2"));
                         Sounds.villagerDeny(event);
                         return;
                     }
+
+                    // Trava atômica no objeto da nota
+                    if (!note.markCancelled()) {
+                        p.sendMessage(M.getFormatted("chat.non-existent"));
+                        Sounds.villagerDeny(event);
+                        return;
+                    }
+
                     Sounds.experience(event);
                     Sounds.breakWood(event);
-                    p.getInventory().addItem(note.getItem());
+
+                    ItemStack itemToReturn = note.getItem();
                     ItemNoteStorage.deleteCancelNote(note);
+
+                    Map<Integer, ItemStack> leftover = p.getInventory().addItem(itemToReturn);
+                    if (!leftover.isEmpty()) {
+                        for (ItemStack leftoverItem : leftover.values()) {
+                            p.getWorld().dropItemNaturally(p.getLocation(), leftoverItem);
+                        }
+                    }
+
                     AuctionHouse.getGuiManager().openGUI(p, c, goBackTo);
                     p.sendMessage(M.getFormatted("chat.auction-canceled"));
                 });
     }
 
 }
-
-
